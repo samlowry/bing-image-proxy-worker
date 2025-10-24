@@ -7,15 +7,41 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // Extract Bing image parameters from path
-    // Expected format: /bing-proxy/q=Florida%20Swingers%20Clubs&w=400&h=300&c=7&rs=1&p=0&o=7&pid=1.1&first=1
-    const pathParts = url.pathname.split('/');
-    if (pathParts[1] !== 'bing-proxy') {
+    // Support multiple URL formats for better disguise
+    let bingParams = '';
+    
+    // Format 1: /api/images/thumbnail?q=Florida&w=400&h=300
+    if (url.pathname.startsWith('/api/images/thumbnail')) {
+      bingParams = url.searchParams.toString();
+    }
+    // Format 2: /thumbnails?query=Florida&width=400&height=300
+    else if (url.pathname.startsWith('/thumbnails')) {
+      const params = new URLSearchParams();
+      params.set('q', url.searchParams.get('query') || '');
+      params.set('w', url.searchParams.get('width') || '400');
+      params.set('h', url.searchParams.get('height') || '300');
+      params.set('c', url.searchParams.get('crop') || '7');
+      params.set('rs', url.searchParams.get('resize') || '1');
+      params.set('p', url.searchParams.get('padding') || '0');
+      params.set('o', url.searchParams.get('orientation') || '7');
+      params.set('pid', url.searchParams.get('pid') || '1.1');
+      params.set('first', url.searchParams.get('first') || '1');
+      bingParams = params.toString();
+    }
+    // Format 3: /cache?q=Florida&w=400&h=300 (legacy support)
+    else if (url.pathname.startsWith('/cache')) {
+      bingParams = url.searchParams.toString();
+    }
+    // Format 4: /bing-proxy/q=Florida&w=400&h=300 (original format)
+    else if (url.pathname.startsWith('/bing-proxy')) {
+      const pathParts = url.pathname.split('/');
+      bingParams = pathParts.slice(2).join('/');
+    }
+    else {
       return new Response('Not Found', { status: 404 });
     }
     
     // Reconstruct Bing URL
-    const bingParams = pathParts.slice(2).join('/');
     const bingUrl = `https://th.bing.com/th?${bingParams}`;
     
     try {
