@@ -1,0 +1,10 @@
+name = "bing-image-proxy"
+main = "workers/bing-image-proxy.js"
+compatibility_date = "2024-01-01"
+
+# Worker configuration for Bing image proxy
+[env.production]
+  # Production environment variables if needed
+
+[env.preview]
+  # Preview environment variables if needed

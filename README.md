@@ -1,0 +1,104 @@
+# Bing Image Proxy Worker
+
+Cloudflare Worker для прокси-кеширования изображений Bing с постоянным кешированием.
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/samlowry/bing-image-proxy-worker)
+
+## Функциональность
+
+- **Прокси-запросы**: Перенаправляет запросы к Bing Thumbnail API
+- **Постоянное кеширование**: Кеширует изображения навсегда в Cloudflare Cache
+- **Оптимизация**: Отдает изображения с edge-серверов Cloudflare
+- **Автоматическое преобразование**: Интегрируется с основным сайтом
+
+## Развертывание
+
+### 1. Развертывание Worker
+
+```bash
+cd workers/
+npm install
+npx wrangler deploy
+```
+
+### 2. Настройка домена
+
+После развертывания получите URL Worker и обновите в файлах:
+- `src/js/main.js` - замените `your-domain.workers.dev` на реальный URL
+- `src/js/bing-proxy.js` - обновите `baseUrl`
+
+### 3. Интеграция с сайтом
+
+Worker автоматически интегрирован в основной сайт через:
+- Lazy loading изображений
+- Автоматическое преобразование Bing URLs
+- Кеширование на стороне клиента
+
+## Использование
+
+### Прямое использование
+
+```javascript
+// Импорт helper
+import { bingProxy } from './js/bing-proxy.js';
+
+// Генерация proxy URL
+const proxyUrl = bingProxy.getProxyUrl('Florida Swingers Clubs', {
+  width: 400,
+  height: 300
+});
+
+// Или из существующего Bing URL
+const originalUrl = 'https://th.bing.com/th?q=Florida%20Swingers&w=400&h=300';
+const proxyUrl = bingProxy.fromBingUrl(originalUrl);
+```
+
+### Автоматическое преобразование
+
+Все изображения с `data-src` содержащие `th.bing.com` автоматически преобразуются в proxy URLs при lazy loading.
+
+## Структура URL
+
+```
+https://your-worker.workers.dev/bing-proxy/q=query&w=400&h=300&c=7&rs=1&p=0&o=7&pid=1.1&first=1
+```
+
+## Кеширование
+
+- **Cloudflare Cache**: Постоянное кеширование (1 год)
+- **Browser Cache**: `Cache-Control: public, max-age=31536000, immutable`
+- **Headers**: Добавляются `X-Cache` и `X-Cache-Status` для отладки
+
+## Безопасность
+
+- Валидация URL параметров
+- Ограничение только на Bing Thumbnail API
+- Proper error handling
+- Rate limiting через Cloudflare
+
+## Мониторинг
+
+Worker логирует:
+- Cache hits/misses
+- Ошибки запросов
+- Статистику использования
+
+## Примеры
+
+### Оригинальный Bing URL
+```
+https://th.bing.com/th?q=Florida%20Swingers%20Clubs%20%26%20Adult%20Venues%20Guide%202025&w=400&h=300&c=7&rs=1&p=0&o=7&pid=1.1&first=1
+```
+
+### Proxy URL
+```
+https://bing-image-proxy.your-domain.workers.dev/bing-proxy/q=Florida%20Swingers%20Clubs%20%26%20Adult%20Venues%20Guide%202025&w=400&h=300&c=7&rs=1&p=0&o=7&pid=1.1&first=1
+```
+
+## Преимущества
+
+1. **Производительность**: Изображения отдаются с edge-серверов
+2. **Надежность**: Не зависит от доступности Bing API
+3. **Экономия**: Один запрос к Bing, множество отдач из кеша
+4. **SEO**: Стабильные URL для изображений
+5. **UX**: Быстрая загрузка изображений

@@ -1,0 +1,24 @@
+{
+  "name": "bing-image-proxy-worker",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker for Bing image proxy caching",
+  "main": "bing-image-proxy.js",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "test": "wrangler dev --test-scheduled"
+  },
+  "keywords": [
+    "cloudflare",
+    "worker",
+    "proxy",
+    "caching",
+    "bing",
+    "images"
+  ],
+  "author": "DotsCo Team",
+  "license": "ISC",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
