@@ -1,6 +1,7 @@
 /**
  * Bing Image Proxy Worker
  * Caches Bing thumbnail images permanently and serves them from Cloudflare edge
+ * Supports WebP/AVIF conversion via Cloudflare Image Resizing with fallback
  */
 
 export default {
@@ -41,31 +42,54 @@ export default {
       return new Response('Not Found', { status: 404 });
     }
     
+    // Determine output format from query param or Accept header
+    let format = url.searchParams.get('format') || null;
+    const accept = request.headers.get('Accept') || '';
+    
+    if (!format) {
+      // Auto-detect from Accept header
+      if (accept.includes('image/avif')) {
+        format = 'avif';
+      } else if (accept.includes('image/webp')) {
+        format = 'webp';
+      } else {
+        format = 'auto'; // Let Cloudflare decide or return original
+      }
+    }
+    
     // Reconstruct Bing URL
     const bingUrl = `https://th.bing.com/th?${bingParams}`;
     
     try {
-      // Check if we have this image cached
-      const cacheKey = new Request(bingUrl, request);
+      // Create cache key that includes format to cache different formats separately
+      const cacheKeyUrl = format !== 'auto' && format !== 'original' && format !== null
+        ? `${bingUrl}?format=${format}`
+        : bingUrl;
+      const cacheKey = new Request(cacheKeyUrl, request);
       const cachedResponse = await caches.default.match(cacheKey);
       
       if (cachedResponse) {
         // Return cached image with proper headers
+        const contentType = format === 'avif' ? 'image/avif' 
+          : format === 'webp' ? 'image/webp'
+          : cachedResponse.headers.get('Content-Type') || 'image/jpeg';
+        
         const response = new Response(cachedResponse.body, {
           status: cachedResponse.status,
           statusText: cachedResponse.statusText,
           headers: {
-            'Content-Type': cachedResponse.headers.get('Content-Type') || 'image/jpeg',
-            'Cache-Control': 'public, max-age=31536000, immutable', // Cache for 1 year
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=31536000, immutable',
             'X-Cache': 'HIT',
-            'X-Cache-Status': 'cached'
+            'X-Cache-Status': 'cached',
+            'X-Format': format || 'original'
           }
         });
         
         return response;
       }
       
-      // Fetch from Bing if not cached
+      // Fetch original from Bing first
       const bingResponse = await fetch(bingUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; CloudflareWorker/1.0)',
@@ -78,23 +102,80 @@ export default {
         return new Response('Failed to fetch image', { status: bingResponse.status });
       }
       
+      let finalResponse = bingResponse;
+      let finalFormat = 'original';
+      
+      // Apply format conversion if requested (and not 'auto' or 'original')
+      if (format && format !== 'auto' && format !== 'original') {
+        try {
+          // Use Cloudflare Image Resizing to convert format
+          const convertedResponse = await fetch(bingUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; CloudflareWorker/1.0)',
+              'Accept': 'image/*',
+              'Referer': 'https://bing.com/'
+            },
+            cf: {
+              image: {
+                format: format,
+                quality: 85
+              }
+            }
+          });
+          
+          // Check for 9422 error (free plan limit exceeded)
+          if (convertedResponse.status === 500) {
+            const errorText = await convertedResponse.text();
+            if (errorText.includes('9422')) {
+              // Fallback to original image
+              console.log('Image conversion limit exceeded (9422), returning original');
+              finalResponse = bingResponse;
+              finalFormat = 'original';
+            } else {
+              // Other 500 error - return original as fallback
+              finalResponse = bingResponse;
+              finalFormat = 'original';
+            }
+          } else if (convertedResponse.ok) {
+            // Conversion successful
+            finalResponse = convertedResponse;
+            finalFormat = format;
+          } else {
+            // Non-500 error - return original as fallback
+            finalResponse = bingResponse;
+            finalFormat = 'original';
+          }
+        } catch (conversionError) {
+          // Conversion failed - return original
+          console.error('Conversion error:', conversionError);
+          finalResponse = bingResponse;
+          finalFormat = 'original';
+        }
+      }
+      
       // Clone response for caching
-      const responseToCache = bingResponse.clone();
+      const responseToCache = finalResponse.clone();
       
       // Cache the response permanently
       ctx.waitUntil(
         caches.default.put(cacheKey, responseToCache)
       );
       
+      // Determine Content-Type based on final format
+      const contentType = finalFormat === 'avif' ? 'image/avif'
+        : finalFormat === 'webp' ? 'image/webp'
+        : finalResponse.headers.get('Content-Type') || 'image/jpeg';
+      
       // Return response with caching headers
-      const response = new Response(bingResponse.body, {
-        status: bingResponse.status,
-        statusText: bingResponse.statusText,
+      const response = new Response(finalResponse.body, {
+        status: finalResponse.status,
+        statusText: finalResponse.statusText,
         headers: {
-          'Content-Type': bingResponse.headers.get('Content-Type') || 'image/jpeg',
+          'Content-Type': contentType,
           'Cache-Control': 'public, max-age=31536000, immutable',
           'X-Cache': 'MISS',
-          'X-Cache-Status': 'fetched-and-cached'
+          'X-Cache-Status': 'fetched-and-cached',
+          'X-Format': finalFormat
         }
       });
       
