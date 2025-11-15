@@ -109,6 +109,10 @@ export default {
       if (format && format !== 'auto' && format !== 'original') {
         try {
           // Use Cloudflare Image Resizing to convert format
+          // AVIF: quality 30-50 (use 40 for optimal compression)
+          // WebP: quality 75-85 (use 80 for good balance)
+          const quality = format === 'avif' ? 40 : 80;
+          
           const convertedResponse = await fetch(bingUrl, {
             headers: {
               'User-Agent': 'Mozilla/5.0 (compatible; CloudflareWorker/1.0)',
@@ -118,7 +122,7 @@ export default {
             cf: {
               image: {
                 format: format,
-                quality: 85
+                quality: quality
               }
             }
           });
